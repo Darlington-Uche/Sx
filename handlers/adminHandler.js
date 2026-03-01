@@ -224,71 +224,102 @@ class AdminHandler {
     }
   }
 
-  async startPayout(chatId) {
-    try {
-      // Get pool and total balance
-      const poolDoc = await this.db.collection('settings').doc('pool').get();
-      const pool = poolDoc.exists ? poolDoc.data().amount : 0;
+  
+      async startPayout(chatId) {
+  try {
+    // Get pool and total balance
+    const poolDoc = await this.db.collection('settings').doc('pool').get();
+    const pool = poolDoc.exists ? poolDoc.data().amount : 0;
 
-      const usersSnapshot = await this.db.collection('users').get();
-      let totalBalance = 0;
-      usersSnapshot.forEach(doc => {
-        totalBalance += doc.data().balance || 0;
-      });
+    const usersSnapshot = await this.db.collection('users').get();
+    let totalBalance = 0;
+    usersSnapshot.forEach(doc => {
+      totalBalance += doc.data().balance || 0;
+    });
 
-      // Check if payout can be started (not when both are zero)
-      if (pool === 0 && totalBalance === 0) {
-        await this.bot.sendMessage(chatId, '❌ Cannot start payout: Both pool and total balance are zero.');
-        return;
-      }
-
-      const settingsDoc = await this.db.collection('settings').doc('config').get();
-      const minPayout = settingsDoc.exists ? settingsDoc.data().minPayout || 0 : 0;
-
-      const eligibleUsers = [];
-
-      usersSnapshot.forEach(doc => {
-        const user = doc.data();
-        if ((user.balance || 0) >= minPayout && !user.banned) {
-          eligibleUsers.push({
-            ...user,
-            id: doc.id
-          });
-        }
-      });
-
-      if (eligibleUsers.length === 0) {
-        await this.bot.sendMessage(chatId, 'No eligible users found.');
-        return;
-      }
-
-      // Sort eligible users by balance
-      eligibleUsers.sort((a, b) => (b.balance || 0) - (a.balance || 0));
-
-      let payoutText = '💰 *Eligible Users for Payout*\n\n';
-      eligibleUsers.forEach((user, index) => {
-        payoutText += `${index + 1}. (${user.xUsername || 'No X'}) (@${user.username || 'No TG'}) (${user.balance} MB) /ban_${user.userId}\n`;
-      });
-
-      payoutText += `\n_Total eligible: ${eligibleUsers.length}_\n`;
-      payoutText += '_Pool: ' + pool + ' MB_\n';
-      payoutText += '_Total Balance: ' + totalBalance + ' MB_\n';
-      payoutText += '_Click confirm to reset all user balances to 0 to process payout_\n';
-
-      await this.bot.sendMessage(chatId, payoutText, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '✅ Confirm Payout', callback_data: 'confirm_payout' }],
-            [{ text: '❌ Cancel', callback_data: 'admin_dashboard' }]
-          ]
-        }
-      });
-    } catch (error) {
-      console.error('Start payout error:', error);
-      await this.bot.sendMessage(chatId, 'Error starting payout.');
+    // Check if payout can be started (not when both are zero)
+    if (pool === 0 && totalBalance === 0) {
+      await this.bot.sendMessage(chatId, '❌ Cannot start payout: Both pool and total balance are zero.');
+      return;
     }
+
+    const settingsDoc = await this.db.collection('settings').doc('config').get();
+    const minPayout = settingsDoc.exists ? settingsDoc.data().minPayout || 0 : 0;
+
+    const eligibleUsers = [];
+
+    usersSnapshot.forEach(doc => {
+      const user = doc.data();
+      if ((user.balance || 0) >= minPayout && !user.banned) {
+        eligibleUsers.push({
+          ...user,
+          id: doc.id
+        });
+      }
+    });
+
+    if (eligibleUsers.length === 0) {
+      await this.bot.sendMessage(chatId, 'No eligible users found.');
+      return;
+    }
+
+    // Sort eligible users by balance
+    eligibleUsers.sort((a, b) => (b.balance || 0) - (a.balance || 0));
+
+    let payoutText = '💰 *Eligible Users for Payout*\n\n';
+    eligibleUsers.forEach((user, index) => {
+      const phone = user.phone || 'No phone';
+      const network = this.detectNetwork(phone);
+      payoutText += `${index + 1}. \`${phone}\` (${network})\n`;
+    });
+
+    payoutText += `\n_Total eligible: ${eligibleUsers.length}_\n`;
+    payoutText += '_Pool: ' + pool + ' MB_\n';
+    payoutText += '_Total Balance: ' + totalBalance + ' MB_\n';
+    payoutText += '_Click confirm to reset all user balances to 0 to process payout_\n';
+
+    await this.bot.sendMessage(chatId, payoutText, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '✅ Confirm Payout', callback_data: 'confirm_payout' }],
+          [{ text: '❌ Cancel', callback_data: 'admin_dashboard' }]
+        ]
+      }
+    });
+  } catch (error) {
+    console.error('Start payout error:', error);
+    await this.bot.sendMessage(chatId, 'Error starting payout.');
   }
+}
+
+// Helper method to detect network from phone number
+detectNetwork(phone) {
+  if (!phone || phone === 'No phone') return 'Unknown';
+  
+  // Remove any non-digit characters
+  const cleanPhone = phone.replace(/\D/g, '');
+  
+  // Check for MTN prefixes (example - adjust based on your country)
+  const mtnPrefixes = ['0703', '0706', '0803', '0806', '0810', '0813', '0814', '0816', '0903', '0906', '0913', '0916'];
+  const gloPrefixes = ['0705', '0805', '0807', '0811', '0815', '0905'];
+  const airtelPrefixes = ['0701', '0708', '0802', '0808', '0812', '0901', '0902', '0907'];
+  const etisalatPrefixes = ['0809', '0817', '0818', '0908', '0909'];
+  
+  // Get first 4 digits
+  const prefix = cleanPhone.substring(0, 4);
+  
+  if (mtnPrefixes.includes(prefix)) return 'MTN';
+  if (gloPrefixes.includes(prefix)) return 'GLO';
+  if (airtelPrefixes.includes(prefix)) return 'AIRTEL';
+  if (etisalatPrefixes.includes(prefix)) return '9MOBILE';
+  
+  return 'Unknown';
+}
+
+
+
+
 
   async confirmPayout(chatId) {
     try {
