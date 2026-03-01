@@ -7,7 +7,22 @@ class UserHandler {
 async showDashboard(userId, chatId) {
   try {
     const userDoc = await this.db.collection('users').doc(userId.toString()).get();
+    
+    if (!userDoc.exists) {
+      await this.bot.sendMessage(chatId, 'User not found. Please /start to register.');
+      return;
+    }
+    
     const user = userDoc.data();
+    
+    // Check if user has joined required groups
+    if (!user.joinedGroups) {
+      // Import RegistrationHandler to use its group verification
+      const RegistrationHandler = require('./registrationHandler');
+      const regHandler = new RegistrationHandler(this.bot, this.db);
+      await regHandler.askToJoinGroups(userId, chatId);
+      return;
+    }
     
     // Get today's pool
     const poolDoc = await this.db.collection('settings').doc('pool').get();
@@ -23,7 +38,7 @@ async showDashboard(userId, chatId) {
     const phone = user.phone.replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1');
     const network = user.network.replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1');
 
-const dashboardText = `
+    const dashboardText = `
 📊 *YOUR DASHBOARD*
 ━━━━━━━━━━━━━━━━
 
@@ -77,17 +92,30 @@ https://t.me/RKdropsBot?start=${userId}
       const userDoc = await this.db.collection('users').doc(userId.toString()).get();
       const user = userDoc.data();
       
+      // Get today's pool for fallback
+      const poolDoc = await this.db.collection('settings').doc('pool').get();
+      const todayPool = poolDoc.exists ? poolDoc.data().amount || 0 : 0;
+      
+      // Get min payout for fallback
+      const settingsDoc = await this.db.collection('settings').doc('config').get();
+      const minPayout = settingsDoc.exists ? settingsDoc.data().minPayout || 0 : 0;
+      
       const fallbackText = `
-📊 Your Dashboard
+📊 YOUR DASHBOARD
+━━━━━━━━━━━━━━━━
 
 👤 Username: @${user.username}
-📦 Today's pool: ${todayPool.toFixed(2)}MB
-💰 Min payout: ${minPayout.toFixed(5)}MB
-📱 X.username: ${user.xUsername}
-📞 PhoneNumber: ${user.phone} × ${user.network}
-🔗 Referral link: https://t.me/RKdropsBot?start=${userId}
+📦 Today's Pool: ${todayPool.toFixed(2)} MB
+💰 Min Payout: ${minPayout.toFixed(5)} MB
+📱 X Username: ${user.xUsername}
+📞 Phone: ${user.phone} × ${user.network}
 
-💎 Your Balance: ${user.balance || 0}MB
+━━━━━━━━━━━━━━━━
+💎 Balance: ${user.balance || 0} MB
+━━━━━━━━━━━━━━━━
+
+🔗 Referral Link:
+https://t.me/RKdropsBot?start=${userId}
       `;
       
       await this.bot.sendMessage(chatId, fallbackText, {
@@ -103,10 +131,12 @@ https://t.me/RKdropsBot?start=${userId}
         }
       });
     } catch (fallbackError) {
+      console.error('Fallback error:', fallbackError);
       await this.bot.sendMessage(chatId, 'Error loading dashboard. Please try again.');
     }
   }
 }
+
   async showEarnMenu(userId, chatId) {
     try {
       // Get available tasks
