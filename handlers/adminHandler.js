@@ -9,41 +9,44 @@ class AdminHandler {
       // Get counts
       const usersSnapshot = await this.db.collection('users').get();
       const usersCount = usersSnapshot.size;
-      
+
       // Get total balance
       let totalBalance = 0;
       usersSnapshot.forEach(doc => {
         totalBalance += doc.data().balance || 0;
       });
-      
+
       // Get today's pool
       const poolDoc = await this.db.collection('settings').doc('pool').get();
       const todayPool = poolDoc.exists ? poolDoc.data().amount || 0 : 0;
-      
+
       // Get eligible users for today
       const settingsDoc = await this.db.collection('settings').doc('config').get();
       const minPayout = settingsDoc.exists ? settingsDoc.data().minPayout || 0 : 0;
-      
+
       let eligibleUsers = 0;
       usersSnapshot.forEach(doc => {
         if ((doc.data().balance || 0) >= minPayout) {
           eligibleUsers++;
         }
       });
-      
+
       // Get tasks count
       const tasksSnapshot = await this.db.collection('tasks').get();
       const tasksCount = tasksSnapshot.size;
-      
+
       // Get admins count
       const adminsCount = process.env.ADMIN_IDS.split(',').length;
+
+      // Determine if payout can be started (not when both are zero)
+      const canStartPayout = !(todayPool === 0 && totalBalance === 0);
 
       const adminText = `
 👋 *Welcome, Admin*
 
 👥 Users count: ${usersCount}
-💰 Total Balance: ${totalBalance.toFixed(2)}MB
-📦 Today's pool: ${todayPool.toFixed(2)}MB
+💰 Total Balance: ${totalBalance.toFixed(2)} MB
+📦 Today's pool: ${todayPool.toFixed(2)} MB
 🎯 Eligible users: ${eligibleUsers}
 📊 Status: Active
 📋 Earn Tasks: ${tasksCount}
@@ -60,19 +63,26 @@ class AdminHandler {
 /task - Manage tasks
       `;
 
+      const inlineKeyboard = [
+        [
+          { text: '👥 Users', callback_data: 'users_list' },
+          { text: '💰 Start Payout', callback_data: 'start_payout' }
+        ],
+        [
+          { text: '📋 Tasks', callback_data: 'admin_task' },
+          { text: '🔄 Refresh', callback_data: 'admin_dashboard' }
+        ]
+      ];
+
+      // Disable payout button if both pool and balance are zero
+      if (!canStartPayout) {
+        inlineKeyboard[0][1] = { text: '💰 Start Payout (Disabled)', callback_data: 'payout_disabled' };
+      }
+
       await this.bot.sendMessage(chatId, adminText, {
         parse_mode: 'Markdown',
         reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '👥 Users', callback_data: 'users_list' },
-              { text: '💰 Start Payout', callback_data: 'start_payout' }
-            ],
-            [
-              { text: '📋 Tasks (!)', callback_data: 'admin_task' },
-              { text: '🔄 Refresh', callback_data: 'admin_dashboard' }
-            ]
-          ]
+          inline_keyboard: inlineKeyboard
         }
       });
     } catch (error) {
@@ -97,18 +107,18 @@ class AdminHandler {
     try {
       const poolDoc = await this.db.collection('settings').doc('pool').get();
       const currentPool = poolDoc.exists ? poolDoc.data().amount : 0;
-      
+
       if (currentPool !== 0) {
         await this.bot.sendMessage(chatId, '❌ Pool can only be set when it is 0');
         return;
       }
-      
+
       await this.db.collection('settings').doc('pool').set({
         amount: amount,
         updatedAt: new Date().toISOString()
       }, { merge: true });
-      
-      await this.bot.sendMessage(chatId, `✅ Pool set to ${amount}MB`);
+
+      await this.bot.sendMessage(chatId, `✅ Pool set to ${amount} MB`);
     } catch (error) {
       console.error('Set pool error:', error);
       await this.bot.sendMessage(chatId, 'Error setting pool.');
@@ -121,8 +131,8 @@ class AdminHandler {
         minPayout: amount,
         updatedAt: new Date().toISOString()
       }, { merge: true });
-      
-      await this.bot.sendMessage(chatId, `✅ Minimum payout set to ${amount}MB`);
+
+      await this.bot.sendMessage(chatId, `✅ Minimum payout set to ${amount} MB`);
     } catch (error) {
       console.error('Set min payout error:', error);
       await this.bot.sendMessage(chatId, 'Error setting minimum payout.');
@@ -133,7 +143,7 @@ class AdminHandler {
     try {
       const usersSnapshot = await this.db.collection('users').get();
       const results = [];
-      
+
       usersSnapshot.forEach(doc => {
         const user = doc.data();
         if (user.username?.toLowerCase().includes(query.toLowerCase()) || 
@@ -142,22 +152,17 @@ class AdminHandler {
           results.push(user);
         }
       });
-      
+
       if (results.length === 0) {
         await this.bot.sendMessage(chatId, 'No users found.');
         return;
       }
-      
+
       let resultText = '🔍 *Search Results*\n\n';
-      results.forEach(user => {
-        resultText += `ID: \`${user.userId}\`\n`;
-        resultText += `Username: @${user.username}\n`;
-        resultText += `X: ${user.xUsername}\n`;
-        resultText += `Phone: ${user.phone}\n`;
-        resultText += `Balance: ${user.balance || 0}MB\n`;
-        resultText += `Banned: ${user.banned ? 'Yes' : 'No'}\n\n`;
+      results.forEach((user, index) => {
+        resultText += `${index + 1}. (${user.xUsername || 'No X'}) (@${user.username || 'No TG'}) (${user.balance || 0} MB) /ban_${user.userId}\n`;
       });
-      
+
       await this.bot.sendMessage(chatId, resultText, { parse_mode: 'Markdown' });
     } catch (error) {
       console.error('Search error:', error);
@@ -168,54 +173,51 @@ class AdminHandler {
   async showUsersList(chatId) {
     try {
       const usersSnapshot = await this.db.collection('users').get();
-      
+
       if (usersSnapshot.empty) {
         await this.bot.sendMessage(chatId, 'No users found.');
         return;
       }
-      
+
+      // Convert to array
+      const users = [];
+      usersSnapshot.forEach(doc => {
+        users.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+
       // Send users in chunks to avoid message too long error
       let userListText = '👥 *Users List*\n\n';
       let count = 0;
-      const keyboard = [];
       
-      for (const doc of usersSnapshot.docs) {
-        const user = doc.data();
-        userListText += `ID: \`${user.userId}\`\n`;
-        userListText += `@${user.username} - ${user.xUsername}\n`;
-        userListText += `${user.phone}\n`;
-        userListText += `Balance: ${user.balance || 0}MB\n`;
-        userListText += `Banned: ${user.banned ? '✅' : '❌'}\n`;
-        userListText += `/ban ${user.userId}\n\n`;
-        
+      for (const user of users) {
         count++;
+        const balance = user.balance || 0;
+        const xUsername = user.xUsername || 'No X';
+        const tgUsername = user.username || 'No TG';
+        const userId = user.userId || user.id;
         
-        // Send in chunks of 5 users
-        if (count % 5 === 0) {
+        userListText += `${count}. (${xUsername}) (@${tgUsername}) (${balance} MB) /ban_${userId}\n`;
+
+        // Send in chunks of 20 users
+        if (count % 20 === 0) {
           await this.bot.sendMessage(chatId, userListText, { parse_mode: 'Markdown' });
-          userListText = '👥 *Users List (continued)*\n\n';
+          userListText = '';
         }
       }
-      
+
       // Send remaining users
-      if (userListText !== '👥 *Users List (continued)*\n\n') {
+      if (userListText) {
         await this.bot.sendMessage(chatId, userListText, { parse_mode: 'Markdown' });
       }
-      
-      // Add ban buttons
-      usersSnapshot.forEach(doc => {
-        const user = doc.data();
-        keyboard.push([{ text: `Ban @${user.username}`, callback_data: `ban_${user.userId}` }]);
-      });
-      
-      if (keyboard.length > 0) {
-        await this.bot.sendMessage(chatId, 'Quick Ban Actions:', {
-          reply_markup: {
-            inline_keyboard: keyboard.slice(0, 10) // Limit to 10 buttons
-          }
-        });
-      }
-      
+
+      // Add summary
+      const totalBalance = users.reduce((sum, user) => sum + (user.balance || 0), 0);
+      const summaryText = `📊 *Summary*\nTotal Users: ${users.length}\nTotal Balance: ${totalBalance.toFixed(2)} MB`;
+      await this.bot.sendMessage(chatId, summaryText, { parse_mode: 'Markdown' });
+
     } catch (error) {
       console.error('Users list error:', error);
       await this.bot.sendMessage(chatId, 'Error loading users list.');
@@ -224,42 +226,55 @@ class AdminHandler {
 
   async startPayout(chatId) {
     try {
+      // Get pool and total balance
       const poolDoc = await this.db.collection('settings').doc('pool').get();
       const pool = poolDoc.exists ? poolDoc.data().amount : 0;
-      
-      if (pool === 0) {
-        await this.bot.sendMessage(chatId, '❌ Pool is empty. Set pool first with /set_pool');
+
+      const usersSnapshot = await this.db.collection('users').get();
+      let totalBalance = 0;
+      usersSnapshot.forEach(doc => {
+        totalBalance += doc.data().balance || 0;
+      });
+
+      // Check if payout can be started (not when both are zero)
+      if (pool === 0 && totalBalance === 0) {
+        await this.bot.sendMessage(chatId, '❌ Cannot start payout: Both pool and total balance are zero.');
         return;
       }
-      
+
       const settingsDoc = await this.db.collection('settings').doc('config').get();
       const minPayout = settingsDoc.exists ? settingsDoc.data().minPayout || 0 : 0;
-      
-      const usersSnapshot = await this.db.collection('users').get();
+
       const eligibleUsers = [];
-      
+
       usersSnapshot.forEach(doc => {
         const user = doc.data();
         if ((user.balance || 0) >= minPayout && !user.banned) {
-          eligibleUsers.push(user);
+          eligibleUsers.push({
+            ...user,
+            id: doc.id
+          });
         }
       });
-      
+
       if (eligibleUsers.length === 0) {
         await this.bot.sendMessage(chatId, 'No eligible users found.');
         return;
       }
-      
+
+      // Sort eligible users by balance
+      eligibleUsers.sort((a, b) => (b.balance || 0) - (a.balance || 0));
+
       let payoutText = '💰 *Eligible Users for Payout*\n\n';
-      eligibleUsers.forEach(user => {
-        payoutText += `ID: \`${user.userId}\`\n`;
-        payoutText += `Phone: \`${user.phone}\`\n`;
-        payoutText += `X: ${user.xUsername}\n`;
-        payoutText += `Balance: ${user.balance}MB\n\n`;
+      eligibleUsers.forEach((user, index) => {
+        payoutText += `${index + 1}. (${user.xUsername || 'No X'}) (@${user.username || 'No TG'}) (${user.balance} MB) /ban_${user.userId}\n`;
       });
-      
+
+      payoutText += `\n_Total eligible: ${eligibleUsers.length}_\n`;
+      payoutText += '_Pool: ' + pool + ' MB_\n';
+      payoutText += '_Total Balance: ' + totalBalance + ' MB_\n';
       payoutText += '_Click confirm to reset all user balances to 0 to process payout_\n';
-      
+
       await this.bot.sendMessage(chatId, payoutText, {
         parse_mode: 'Markdown',
         reply_markup: {
@@ -280,20 +295,20 @@ class AdminHandler {
       // Reset all user balances to 0
       const usersSnapshot = await this.db.collection('users').get();
       const batch = this.db.batch();
-      
+
       usersSnapshot.forEach(doc => {
         const userRef = this.db.collection('users').doc(doc.id);
         batch.update(userRef, { balance: 0 });
       });
-      
+
       await batch.commit();
-      
+
       // Reset pool
       await this.db.collection('settings').doc('pool').set({
         amount: 0,
         updatedAt: new Date().toISOString()
       }, { merge: true });
-      
+
       await this.bot.sendMessage(chatId, '✅ Payout completed! All balances reset to 0.');
       await this.showAdminDashboard(chatId);
     } catch (error) {
@@ -312,14 +327,20 @@ class AdminHandler {
         await this.startPayout(chatId);
       } else if (data === 'confirm_payout') {
         await this.confirmPayout(chatId);
-      } else if (data === 'admin_tasks') {
-        // This will be handled by task handler
+      } else if (data === 'admin_task') {
+        // Send the /task command
+        await this.bot.sendMessage(chatId, '/task');
+      } else if (data === 'payout_disabled') {
+        await this.bot.answerCallbackQuery(chatId, {
+          text: 'Payout disabled: Both pool and total balance are zero',
+          show_alert: true
+        });
         return;
       } else if (data.startsWith('ban_')) {
         const userId = data.replace('ban_', '');
         await this.banUser(userId, chatId);
       }
-      
+
       // Delete the callback message
       await this.bot.deleteMessage(chatId, messageId).catch(() => {});
     } catch (error) {
