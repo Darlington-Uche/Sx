@@ -51,7 +51,7 @@ class AdminHandler {
 📊 Status: Active
 📋 Earn Tasks: ${tasksCount}
 👤 Admins: ${adminsCount}
-⚡ Darlington says 👋
+⚡ Darlington says hi 
 
 *Available Commands:*
 /ban [id] - Ban user
