@@ -69,7 +69,7 @@ class AdminHandler {
               { text: '💰 Start Payout', callback_data: 'start_payout' }
             ],
             [
-              { text: '📋 Tasks', callback_data: 'admin_tasks' },
+              { text: '📋 Tasks (!)', callback_data: 'admin_task' },
               { text: '🔄 Refresh', callback_data: 'admin_dashboard' }
             ]
           ]
@@ -258,7 +258,7 @@ class AdminHandler {
         payoutText += `Balance: ${user.balance}MB\n\n`;
       });
       
-      payoutText += '_Click confirm to reset all user balances to 0 and process payout_\n';
+      payoutText += '_Click confirm to reset all user balances to 0 to process payout_\n';
       
       await this.bot.sendMessage(chatId, payoutText, {
         parse_mode: 'Markdown',
