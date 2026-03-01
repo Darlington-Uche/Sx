@@ -280,10 +280,7 @@ class AdminHandler {
       
       // Format: [xusername] - [phonenumber] - [network] - [amount]
       // Make phone number and balance copiable using backticks
-      payoutText += `${index + 1}. [${xUsername}] - \`${phoneNumber}\` - [${network}] - \`${balance} MB\`\n`;
-      
-      // Add ban command on a new line for easy access
-      payoutText += `   /ban_${userId}\n\n`;
+      payoutText += `${index + 1}. [${xUsername}] -- \`${phoneNumber}\` - [${network}] -- \`${balance} MB\`\n`;
     });
 
     // Calculate total eligible balance
