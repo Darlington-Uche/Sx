@@ -92,7 +92,7 @@ app.post(`/bot${token}`, async (req, res) => {
         }
         else if (msg.text === '/stop' && ADMIN_IDS.includes(msg.from.id)) {
           botActive = false;
-          await bot.sendMessage(msg.chat.id, '❌ Bot stopped for users');
+          await bot.sendMessage(msg.chat.id, '❌ not yet available');
         }
         else if (msg.text === '/on' && ADMIN_IDS.includes(msg.from.id)) {
           botActive = true;
