@@ -168,6 +168,10 @@ app.post(`/bot${token}`, async (req, res) => {
           if (data === 'earn' || data === 'refresh' || data === 'support' || 
               data === 'back' || data.startsWith('user_task_')) {
             await userHandler.handleUserCallback(userId, data, msg.chat.id, msg.message_id);
+          } else if (data === 'verify_groups') {
+  await registrationHandler.verifyGroupMembership(userId, msg.chat.id);
+  await bot.deleteMessage(msg.chat.id, msg.message_id);
+
           } else if (data.startsWith('task_done_')) {
             const taskId = data.replace('task_done_', '');
             await taskHandler.completeTask(userId, taskId, msg.chat.id);
