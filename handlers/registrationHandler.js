@@ -95,12 +95,14 @@ class RegistrationHandler {
           // Send group invite
           await this.bot.sendMessage(
             chatId,
-            '✅ Registration Complete!\n\nJoin our updates group: https://t.me/DailyComboReview\n\nhttps://t.me/TGNAIJAUPDATE\n\nNot joining might result in future Ban',
+            '✅ Registration Complete!\n\nJoin our updates group: https://t.me/DailyComboReview\n\nhttps://t.me/TGNAIJAUPDATE\n\nhttps://t.me/onlyTAPTAP\n\n https://t.me/Gunlimitedchannel\n\n Not joining might result in future Ban',
             {
               reply_markup: {
                 inline_keyboard: [
-                  [{ text: 'Join Group', url: 'https://t.me/DailyComboReview' }],
-                  [{ text: 'Join Group 2', url: 'https://t.me/TGNAIJAUPDATE' }],
+                  [{ text: 'Join Group 1', url: 'https://t.me/DailyComboReview' }],
+                  [{ text: 'Join Group 2', url: 'https://t.me/onlyTAPTAP' }],
+                  [{ text: 'Join Group 3', url: 'https://t.me/Gunlimitedchannel' }],
+                  [{ text: 'Join Group 4', url: 'https://t.me/TGNAIJAUPDATE' }],
                   [{ text: 'Continue to Dashboard', callback_data: 'refresh' }]
                 ]
               }
