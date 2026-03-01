@@ -353,7 +353,7 @@ ${task.description}
         for (const adminId of admins) {
           await this.bot.sendMessage(
             adminId,
-            `✅ @${user.username} completed a task!\n\nTask: ${task.description}\nReward: ${task.prize}MB`
+            `✅ @${user.username} completed a task!\n\nReward: ${task.prize}MB`
           ).catch(() => {});
         }
       } catch (adminError) {
