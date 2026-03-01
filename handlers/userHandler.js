@@ -38,7 +38,7 @@ const dashboardText = `
 ━━━━━━━━━━━━━━━━
 
 🔗 *Referral Link:*
-https://t.me/yourbot?start=${userId}
+https://t.me/RKdropsBot?start=${userId}
 `;
 
     // Send main menu with image
@@ -85,7 +85,7 @@ https://t.me/yourbot?start=${userId}
 💰 Min payout: ${minPayout.toFixed(5)}MB
 📱 X.username: ${user.xUsername}
 📞 PhoneNumber: ${user.phone} × ${user.network}
-🔗 Referral link: https://t.me/yourbot?start=${userId}
+🔗 Referral link: https://t.me/RKdropsBot?start=${userId}
 
 💎 Your Balance: ${user.balance || 0}MB
       `;
