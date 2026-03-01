@@ -224,8 +224,11 @@ class AdminHandler {
     }
   }
 
+
+
   
-      async startPayout(chatId) {
+  
+    async startPayout(chatId) {
   try {
     // Get pool and total balance
     const poolDoc = await this.db.collection('settings').doc('pool').get();
@@ -267,16 +270,31 @@ class AdminHandler {
     eligibleUsers.sort((a, b) => (b.balance || 0) - (a.balance || 0));
 
     let payoutText = '💰 *Eligible Users for Payout*\n\n';
+    
     eligibleUsers.forEach((user, index) => {
-      const phone = user.phone || 'No phone';
-      const network = this.detectNetwork(phone);
-      payoutText += `${index + 1}. \`${phone}\` (${network})\n`;
+      const xUsername = user.xUsername || 'No X';
+      const phoneNumber = user.phone || 'No phone';
+      const network = user.network || 'Unknown';
+      const balance = user.balance || 0;
+      const userId = user.userId || user.id;
+      
+      // Format: [xusername] - [phonenumber] - [network] - [amount]
+      // Make phone number and balance copiable using backticks
+      payoutText += `${index + 1}. [${xUsername}] - \`${phoneNumber}\` - [${network}] - \`${balance} MB\`\n`;
+      
+      // Add ban command on a new line for easy access
+      payoutText += `   /ban_${userId}\n\n`;
     });
 
-    payoutText += `\n_Total eligible: ${eligibleUsers.length}_\n`;
-    payoutText += '_Pool: ' + pool + ' MB_\n';
-    payoutText += '_Total Balance: ' + totalBalance + ' MB_\n';
-    payoutText += '_Click confirm to reset all user balances to 0 to process payout_\n';
+    // Calculate total eligible balance
+    const totalEligibleBalance = eligibleUsers.reduce((sum, user) => sum + (user.balance || 0), 0);
+
+    payoutText += `\n📊 *Summary*\n`;
+    payoutText += `Total eligible: ${eligibleUsers.length} users\n`;
+    payoutText += `Total eligible balance: \`${totalEligibleBalance.toFixed(2)} MB\`\n`;
+    payoutText += `Pool amount: \`${pool} MB\`\n`;
+    payoutText += `Total balance (all users): \`${totalBalance.toFixed(2)} MB\`\n\n`;
+    payoutText += '_Click confirm to reset all user balances to 0 and process payout_\n';
 
     await this.bot.sendMessage(chatId, payoutText, {
       parse_mode: 'Markdown',
@@ -293,60 +311,150 @@ class AdminHandler {
   }
 }
 
-// Helper method to detect network from phone number
-detectNetwork(phone) {
-  if (!phone || phone === 'No phone') return 'Unknown';
-  
-  // Remove any non-digit characters
-  const cleanPhone = phone.replace(/\D/g, '');
-  
-  // Check for MTN prefixes (example - adjust based on your country)
-  const mtnPrefixes = ['0703', '0706', '0803', '0806', '0810', '0813', '0814', '0816', '0903', '0906', '0913', '0916'];
-  const gloPrefixes = ['0705', '0805', '0807', '0811', '0815', '0905'];
-  const airtelPrefixes = ['0701', '0708', '0802', '0808', '0812', '0901', '0902', '0907'];
-  const etisalatPrefixes = ['0809', '0817', '0818', '0908', '0909'];
-  
-  // Get first 4 digits
-  const prefix = cleanPhone.substring(0, 4);
-  
-  if (mtnPrefixes.includes(prefix)) return 'MTN';
-  if (gloPrefixes.includes(prefix)) return 'GLO';
-  if (airtelPrefixes.includes(prefix)) return 'AIRTEL';
-  if (etisalatPrefixes.includes(prefix)) return '9MOBILE';
-  
-  return 'Unknown';
-}
 
 
-
-
-
-  async confirmPayout(chatId) {
-    try {
-      // Reset all user balances to 0
-      const usersSnapshot = await this.db.collection('users').get();
-      const batch = this.db.batch();
-
-      usersSnapshot.forEach(doc => {
-        const userRef = this.db.collection('users').doc(doc.id);
-        batch.update(userRef, { balance: 0 });
-      });
-
-      await batch.commit();
-
-      // Reset pool
-      await this.db.collection('settings').doc('pool').set({
-        amount: 0,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-
-      await this.bot.sendMessage(chatId, '✅ Payout completed! All balances reset to 0.');
-      await this.showAdminDashboard(chatId);
-    } catch (error) {
-      console.error('Confirm payout error:', error);
-      await this.bot.sendMessage(chatId, 'Error processing payout.');
+async confirmPayout(chatId) {
+  try {
+    // Get payout settings
+    const settingsDoc = await this.db.collection('settings').doc('config').get();
+    const minPayout = settingsDoc.exists ? settingsDoc.data().minPayout || 0 : 0;
+    
+    // Get pool amount
+    const poolDoc = await this.db.collection('settings').doc('pool').get();
+    const poolAmount = poolDoc.exists ? poolDoc.data().amount || 0 : 0;
+    
+    // Get all users
+    const usersSnapshot = await this.db.collection('users').get();
+    
+    // Find eligible users
+    const eligibleUsers = [];
+    usersSnapshot.forEach(doc => {
+      const user = doc.data();
+      if ((user.balance || 0) >= minPayout && !user.banned) {
+        eligibleUsers.push({ id: doc.id, ...user });
+      }
+    });
+    
+    if (eligibleUsers.length === 0) {
+      await this.bot.sendMessage(chatId, '❌ No eligible users found for payout.');
+      return;
     }
+    
+    // Send loading message
+    const loadingMsg = await this.bot.sendMessage(
+      chatId, 
+      `⏳ hope you are done sending payments...`,
+      { parse_mode: 'Markdown' }
+    );
+    
+    // Statistics
+    let totalPaid = 0;
+    let successCount = 0;
+    let failCount = 0;
+    
+    // Process each eligible user
+    for (const user of eligibleUsers) {
+      try {
+        const payoutAmount = user.balance;
+        
+        // Create payout record
+        const payoutId = Date.now() + user.id;
+        await this.db.collection('payouts').doc(payoutId).set({
+          userId: user.id,
+          username: user.username,
+          phone: user.phone,
+          amount: payoutAmount,
+          status: 'paid',
+          paidAt: new Date().toISOString(),
+          minPayout: minPayout
+        });
+        
+        // Send sweet notification to user
+        const userMessage = `
+🎉 *PAYOUT RECEIVED!* 🎉
+━━━━━━━━━━━━━━━━
+
+💎 *Amount:* ${payoutAmount.toFixed(2)} MB
+📱 *Phone:* ${user.phone}
+⏰ *Time:* ${new Date().toLocaleString()}
+
+━━━━━━━━━━━━━━━━
+✨ *Thank you for earning with us!* ✨
+
+💫 Your data has been credited successfully!
+🔥 Keep earning more with tasks and referrals!
+
+━━━━━━━━━━━━━━━━
+🔔 *Next payout:* Soon!
+        `;
+        
+        await this.bot.sendMessage(user.id, userMessage, {
+          parse_mode: 'Markdown'
+        }).catch(err => {
+          console.log(`Could not notify user ${user.id}:`, err.message);
+          failCount++;
+        });
+        
+        totalPaid += payoutAmount;
+        successCount++;
+        
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+      } catch (userError) {
+        console.error(`Error processing user ${user.id}:`, userError);
+        failCount++;
+      }
+    }
+    
+    // Reset all user balances to 0
+    const batch = this.db.batch();
+    usersSnapshot.forEach(doc => {
+      const userRef = this.db.collection('users').doc(doc.id);
+      batch.update(userRef, { balance: 0 });
+    });
+    await batch.commit();
+    
+    // Reset pool
+    await this.db.collection('settings').doc('pool').set({
+      amount: 0,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+    
+    // Delete loading message
+    await this.bot.deleteMessage(chatId, loadingMsg.message_id);
+    
+    // Send beautiful summary to admin
+    const summaryMessage = `
+✅ *PAYOUT* ✅
+━━━━━━━━━━━━━━━━━━━━━━
+
+📊 *PAYOUT SUMMARY*
+━━━━━━━━━━━━━━━━
+👥 *Total Users:* ${usersSnapshot.size}
+🎯 *Eligible Users:* ${eligibleUsers.length}
+✅ *Successfully Paid:* ${successCount}
+❌ *Failed Notifications:* ${failCount}
+
+👑 *Darlington's System*
+    `;
+    
+    await this.bot.sendMessage(chatId, summaryMessage, {
+      parse_mode: 'Markdown'
+    });
+    
+    // Show admin dashboard
+    await this.showAdminDashboard(chatId);
+    
+  } catch (error) {
+    console.error('Confirm payout error:', error);
+    await this.bot.sendMessage(
+      chatId, 
+      '❌ *Error processing payout.*\nPlease check logs and try again.',
+      { parse_mode: 'Markdown' }
+    );
   }
+}
 
   async handleCallback(data, chatId, messageId) {
     try {
