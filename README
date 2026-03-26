@@ -1,0 +1,135 @@
+🤖 TelegramBot Reward System
+A production-ready Telegram bot built with Node.js, Express, and Firebase — featuring user registration, referral tracking, task completion, payout management, and a full admin dashboard.
+
+✨ Features
+Webhook-based architecture — low latency, scalable, no polling overhead
+Referral system — users register via referral links; referrers are tracked automatically
+Task engine — admins create tasks; users complete them to earn rewards
+Payout management — configurable pool and minimum payout thresholds
+Admin dashboard — inline keyboard UI with ban, search, pool control, and payout tools
+Ban & maintenance system — instantly toggle bot access or block individual users
+Firebase Firestore — persistent user state, task records, and registration flow
+Health check endpoint — /health for uptime monitoring and deployment checks
+
+🏗️ Project Structure
+├── index.js                  # Entry point — Express server, webhook, routing
+├── handlers/
+│   ├── userHandler.js        # Dashboard, earn screen, user callbacks
+│   ├── adminHandler.js       # Admin dashboard, ban, search, pool, payout
+│   ├── taskHandler.js        # Task creation, completion, admin task UI
+│   └── registrationHandler.js# Multi-step registration, group verification
+├── firebase.js               # Firestore initialization
+├── .env                      # Environment config (not committed)
+└── package.json
+
+⚙️ Environment Variables
+Create a .env file in the project root:
+BOT_TOKEN=your_telegram_bot_token
+WEBHOOK_URL=https://your-domain.com
+ADMIN_IDS=123456789,987654321
+PORT=3000
+Variable
+Description
+BOT_TOKEN
+Telegram bot token from @BotFather
+WEBHOOK_URL
+Public HTTPS URL where Telegram sends updates
+ADMIN_IDS
+Comma-separated Telegram user IDs with admin access
+PORT
+Port for the Express server (default: 3000)
+
+
+🚀 Getting Started
+1. Install dependencies
+npm install
+2. Configure Firebase
+Place your Firebase service account credentials in firebase.js or set them via environment variables. Ensure Firestore is enabled in your Firebase project.
+3. Set up your .env file
+See the Environment Variables section above.
+4. Run the server
+node index.js
+The server will start and automatically register the webhook with Telegram:
+Server running on port 3000
+Webhook set to: https://your-domain.com/bot<token>
+📡 Endpoints
+Method
+Path
+Description
+POST
+/bot<token>
+Telegram webhook receiver
+GET
+/health
+Returns { status: 'OK', botActive }
+
+👤 User Flow
+/start
+  ├── Admin → Admin Dashboard
+  └── User
+        ├── Already registered → Dashboard
+        └── New user → Registration flow
+              └── Optional referral code tracking
+Registration
+Users go through a multi-step registration handled by RegistrationHandler. Group membership verification is required before completing registration.
+
+🛡️ Admin Commands
+Command
+Description
+/start
+Opens the admin dashboard
+/ban <userId>
+Bans a user from the bot
+/stop
+Puts the bot into maintenance mode
+/on
+Reactivates the bot for all users
+/set_pool <amount>
+Sets the reward pool value
+/set_min <amount>
+Sets the minimum payout threshold
+/search <query>
+Searches users by username or ID
+/task
+Opens the task management dashboard
+
+📋 Task System
+Admins create tasks via the /task command through an inline keyboard flow. Users see available tasks in their dashboard, complete them, and submit for verification. Task state during creation is held in memory via taskHandler.taskCreationState.
+
+💰 Payout Flow
+Admin sets pool via /set_pool
+Admin sets minimum payout via /set_min
+Admin initiates payout (start_payout callback)
+Admin confirms (confirm_payout callback)
+AdminHandler distributes rewards to eligible users
+
+🔒 Security
+All admin commands are gated by ADMIN_IDS — only listed user IDs can trigger admin actions
+Banned users receive an immediate rejection message and cannot interact with the bot
+Maintenance mode blocks all non-admin users with a friendly notice
+Webhook path includes the bot token, making it unguessable by default
+
+🧰 Tech Stack
+Layer
+Technology
+Runtime
+Node.js
+HTTP Server
+Express
+Telegram API
+node-telegram-bot-api
+Database
+Firebase Firestore
+Config
+dotenv
+Deployment
+Any HTTPS-capable host (Railway, Render, VPS)
+
+🌐 Deployment Tips
+Your WEBHOOK_URL must be HTTPS — Telegram does not accept plain HTTP webhooks
+Use a reverse proxy (nginx, Caddy) or a platform like Railway or Render that provides HTTPS automatically
+Ensure your Firestore security rules restrict access appropriately
+The /health endpoint can be used with uptime monitors like UptimeRobot
+
+📄 License
+MIT — use freely, attribution appreciated.
